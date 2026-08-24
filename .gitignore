@@ -21,3 +21,34 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+*.csv
+
+# Esclude la cartella dell'ambiente virtuale
+venv/
+.venv/
+env/
+ENV/
+
+# Esclude i file precompilati di Python che appesantiscono la cronologia Git
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# ==========================================
+# VS CODE & IDE CONFIGURATIONS
+# ==========================================
+# Esclude le impostazioni locali di VS Code
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# ==========================================
+# STREAMLIT SECRETS & ENV FILES
+# ==========================================
+.streamlit/secrets.toml
+*.env
+.env.local
