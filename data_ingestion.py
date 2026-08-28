@@ -8,6 +8,9 @@ def get_spark_session():
         SparkSession.builder
         .appName("ACLED_Ingestion")
         .config("spark.driver.memory", "4g")
+        .config("spark.network.timeout", "600s")
+        .config("spark.executor.heartbeatInterval", "60s")
+        .config("spark.rpc.askTimeout", "600s")
         .getOrCreate()
     )
 
@@ -60,7 +63,8 @@ def iter_document_batches(csv_path, batch_size=2000):
     spark = get_spark_session()
     df = load_and_clean(spark, csv_path)
     df = build_documents_df(df)
-
+    df = df.repartition(200)
+    
     metadata_cols = [
         "event_id_cnty", "event_date", "year", "disorder_type", "event_type",
         "sub_event_type", "actor1", "actor2", "country", "region", "admin1",
