@@ -54,6 +54,24 @@ class RouterOutput(BaseModel):
         )
     )
 
+    disorder_type: Optional[str] = Field(
+        default=None,
+        description=(
+            "Macro-level ACLED disorder category, if explicitly mentioned "
+            "(e.g. 'Political violence', 'Strategic developments', "
+            "'Demonstrations')."
+        )
+    )
+
+    sub_event_type: Optional[str] = Field(
+        default=None,
+        description=(
+            "Specific ACLED sub-event category, more detailed than event_type, "
+            "if explicitly mentioned (e.g. 'Armed clash', "
+            "'Looting/property destruction', 'Attack', 'Peaceful protest')."
+        )
+    )
+
 
 # ============================================================
 # SYSTEM PROMPT
@@ -148,6 +166,8 @@ Also extract the following information when explicitly mentioned:
 - date_from
 - date_to
 - event_type
+- disorder_type
+- sub_event_type
 
 Country:
 Return the country name mentioned in the query.
@@ -178,6 +198,36 @@ DO NOT infer exact dates from vague expressions such as:
 - "the last few years"
 
 For such expressions, leave date_from and date_to as null.
+
+ACLED event hierarchy:
+ACLED has three event classification levels:
+
+1. disorder_type: broad macro category.
+   Examples: "Political violence", "Strategic developments",
+   "Demonstrations"
+
+2. event_type: intermediate category.
+   Examples: "Battles", "Violence against civilians", "Protests",
+   "Explosions/Remote violence", "Strategic developments", "Riots"
+
+3. sub_event_type: specific detailed category.
+   Examples: "Armed clash", "Looting/property destruction", "Attack",
+   "Peaceful protest"
+
+Extract the correct level based on how specific the user's term is.
+
+Generic terms such as "political violence" should be extracted as
+disorder_type.
+
+Intermediate terms such as "battles" or "protests" should be extracted as
+event_type.
+
+Very specific terms such as "armed clash" or "looting" should be extracted as
+sub_event_type.
+
+More than one level may be extracted at the same time if the query justifies
+it. Fields that are not mentioned or cannot be reliably inferred must remain
+null.
 
 Event type:
 Extract the event type if it is explicitly mentioned.
@@ -283,6 +333,12 @@ if __name__ == "__main__":
 
         "Which year had the most violence against civilians?",
 
+        "How many political violence events occurred in Sudan?",
+
+        "How many armed clashes happened in Mali in 2022?",
+
+        "How many battles occurred in Ukraine?",
+
         # ----------------------------------------------------
         # SEMANTIC
         # ----------------------------------------------------
@@ -331,6 +387,8 @@ if __name__ == "__main__":
             print(f"  Date from  : {result.date_from}")
             print(f"  Date to    : {result.date_to}")
             print(f"  Event type : {result.event_type}")
+            print(f"  Disorder   : {result.disorder_type}")
+            print(f"  Sub-event  : {result.sub_event_type}")
 
         except Exception as e:
 

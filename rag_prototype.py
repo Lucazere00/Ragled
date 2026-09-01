@@ -79,6 +79,54 @@ Answer:"""
     return chain
 
 
+def get_semantic_context(query: str, k: int = 5) -> str:
+    vectorstore = get_vectorstore()
+
+    retriever = vectorstore.as_retriever(
+        search_kwargs={"k": k}
+    )
+
+    docs = retriever.invoke(query)
+    return format_docs(docs)
+
+
+def build_hybrid_chain():
+    prompt = ChatPromptTemplate.from_template(
+        """You are an assistant answering questions about armed conflict events (ACLED data).
+
+You will receive two different sources of context:
+- Structured context: aggregated quantitative data such as counts, fatalities, and breakdowns.
+- Semantic context: retrieved event descriptions and qualitative details.
+
+Compose one coherent answer that integrates both sources.
+Use the structured context for all numerical and statistical claims.
+Use the semantic context for descriptions, interpretation, and concrete event examples when relevant.
+Do not invent numbers that are not present in the structured context.
+Base qualitative descriptions only on the semantic context.
+If either source lacks the information needed for part of the question, say so explicitly.
+
+Structured context:
+{structured_context}
+
+Semantic context:
+{semantic_context}
+
+Question: {question}
+
+Answer:"""
+    )
+
+    # Llama tramite Groq
+    llm = ChatGroq(
+        model="openai/gpt-oss-20b",
+        temperature=0
+    )
+
+    chain = prompt | llm | StrOutputParser()
+
+    return chain
+
+
 if __name__ == "__main__":
     chain = build_rag_chain(k=5)
 

@@ -55,3 +55,4 @@ ENV/
 
 # ChromaDB
 data/chroma_db/
+data/acled_processed.parquet/

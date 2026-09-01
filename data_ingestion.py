@@ -17,6 +17,7 @@ def get_spark_session():
 
 def load_and_clean(spark, csv_path):
     df = spark.read.csv(csv_path, header=True, inferSchema=True)
+    
 
     df = df.withColumn("event_date", to_date(col("event_date"), "yyyy-MM-dd"))
     df = df.withColumn("fatalities", col("fatalities").cast("int"))
@@ -29,6 +30,21 @@ def load_and_clean(spark, csv_path):
         df = df.withColumn(c, coalesce(col(c), lit("")))
 
     return df
+
+def build_and_save_parquet(csv_path, parquet_path):
+    """
+    Legge il dataset ACLED dal CSV, applica la pulizia e
+    salva il risultato in formato Parquet per le query structured.
+    """
+    spark = get_spark_session()
+
+    df = load_and_clean(spark, csv_path)
+
+    df.write.mode("overwrite").parquet(parquet_path)
+
+    print(f"Parquet salvato in: {parquet_path}")
+
+    spark.stop()
 
 
 def build_documents_df(df):
@@ -122,7 +138,7 @@ def get_structured_df(csv_path):
     return df, spark
 
 
-if __name__ == "__main__":
+#if __name__ == "__main__":
     import time
 
     start = time.time()
@@ -135,4 +151,10 @@ if __name__ == "__main__":
             print(batch[0]["metadata"])
 
     elapsed = time.time() - start
-    print(f"\nTempo totale: {elapsed:.2f}s, documenti processati: {total_docs}")
+# print(f"\nTempo totale: {elapsed:.2f}s, documenti processati: {total_docs}")
+
+if __name__ == "__main__":
+    build_and_save_parquet(
+        "acled_data.csv",
+        "data/acled_processed.parquet"
+    )
