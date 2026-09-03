@@ -3,6 +3,10 @@ from router import route_query
 from structured import run_structured_query
 
 
+EMPTY_STRUCTURED_CONTEXT = "No structured data available for these filters."
+EMPTY_SEMANTIC_CONTEXT = "No relevant documents found."
+
+
 def _format_optional(value):
     """Return a readable representation for optional router fields."""
     return value if value is not None else "None"
@@ -14,6 +18,18 @@ def _format_date_range(date_from, date_to):
         return "None"
 
     return f"{_format_optional(date_from)} - {_format_optional(date_to)}"
+
+
+def _ensure_context(value, placeholder):
+    """Return a non-empty context string for downstream prompts."""
+    if value is None:
+        return placeholder
+
+    value = str(value)
+    if not value.strip():
+        return placeholder
+
+    return value
 
 
 def run_pipeline(query: str) -> str:
@@ -52,11 +68,17 @@ def run_pipeline(query: str) -> str:
     if router_output.query_type == "HYBRID":
         print("\n[HYBRID]")
         print("\n[STRUCTURED PART]")
-        structured_context = run_structured_query(router_output)
+        structured_context = _ensure_context(
+            run_structured_query(router_output),
+            EMPTY_STRUCTURED_CONTEXT,
+        )
         print(structured_context)
 
         print("\n[SEMANTIC PART]")
-        semantic_context = get_semantic_context(query)
+        semantic_context = _ensure_context(
+            get_semantic_context(query),
+            EMPTY_SEMANTIC_CONTEXT,
+        )
         print(semantic_context[:300])
 
         print("\n[COMBINING]")
@@ -68,6 +90,9 @@ def run_pipeline(query: str) -> str:
                 "question": query,
             }
         )
+
+        if response is None or not str(response).strip():
+            print("[WARNING] Hybrid chain returned an empty response.")
 
         print("\n[RESPONSE]")
         print(response)
