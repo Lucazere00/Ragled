@@ -58,3 +58,6 @@ data/chroma_db/
 data/acled_processed.parquet/
 test_e2e_results.txt
 test_e2e.py
+test_query.py
+test_usairan_queries.py
+.~lock.usa-iran.csv#

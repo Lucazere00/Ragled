@@ -23,9 +23,16 @@ def clean_metadata(metadata):
     return {k: (v if v is not None else "") for k, v in metadata.items()}
 
 
-def index_csv(csv_path, batch_size=BATCH_SIZE, resume=True):
+def index_dataset(
+    csv_path,
+    batch_iterator,
+    batch_size=BATCH_SIZE,
+    resume=True,
+    metadata_defaults=None,
+):
     client, collection = get_chroma_collection()
     model = SentenceTransformer(EMBEDDING_MODEL)
+    metadata_defaults = metadata_defaults or {}
 
     already_indexed = set()
     if resume:
@@ -42,23 +49,25 @@ def index_csv(csv_path, batch_size=BATCH_SIZE, resume=True):
     total_skipped = 0
     start = time.time()
 
-    for batch in iter_document_batches(
+    for batch in batch_iterator(
         csv_path,
         batch_size=batch_size
     ):
+        for document in batch:
+            document["metadata"] = {
+                **metadata_defaults,
+                **document["metadata"],
+            }
 
         # filtra i documenti già indicizzati
         if resume and already_indexed:
+            original_batch_len = len(batch)
             batch = [
                 d for d in batch
                 if d["metadata"]["event_id"] not in already_indexed
             ]
 
-            total_skipped += (
-                batch_size - len(batch)
-                if len(batch) < batch_size
-                else 0
-            )
+            total_skipped += original_batch_len - len(batch)
 
         if not batch:
             continue
@@ -107,6 +116,16 @@ def index_csv(csv_path, batch_size=BATCH_SIZE, resume=True):
     )
 
     return collection
+
+
+def index_csv(csv_path, batch_size=BATCH_SIZE, resume=True):
+    return index_dataset(
+        csv_path,
+        iter_document_batches,
+        batch_size=batch_size,
+        resume=resume,
+        metadata_defaults={"dataset": "acled"},
+    )
 
 
 # ============================================================
