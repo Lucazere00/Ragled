@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 import re
+from datetime import datetime
 from typing import Literal
 
 from langchain_chroma import Chroma
@@ -9,6 +10,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables import RunnablePassthrough
 
 CHROMA_PATH = "data/chroma_db"
@@ -126,9 +128,55 @@ def format_docs(docs):
     Trasforma i documenti recuperati in un unico blocco di testo
     da inserire nel prompt come contesto.
     """
-    return "\n\n".join(
-        f"- {doc.page_content}" for doc in docs
+    return "\n\n".join(doc.page_content for doc in docs)
+
+
+def build_semantic_chart(docs, query: str):
+    """Build a chart from the exact documents used as semantic context."""
+    if len(docs) < 2:
+        return None
+
+    dimensions = (
+        ("sub_event_type", "Sub-event type", "Sub-event type"),
+        ("event_type", "Event type", "Event type"),
+        ("actor", "Actor", "Actors involved"),
+        ("month", "Month", "Event trend"),
     )
+    grouped = {}
+    selected = None
+    for field, x_label, title in dimensions:
+        values = []
+        for doc in docs:
+            metadata = doc.metadata or {}
+            if field == "actor":
+                value = metadata.get("actor1") or metadata.get("actor2")
+            elif field == "month":
+                value = str(metadata.get("event_date") or "")[:7]
+            else:
+                value = metadata.get(field)
+            if value not in (None, "", "Unknown"):
+                values.append(str(value))
+        if len(set(values)) > 1:
+            selected = (field, x_label, title, values)
+            break
+
+    if selected is None:
+        return None
+
+    field, x_label, title, values = selected
+    counts = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    labels = sorted(counts) if field == "month" else sorted(counts, key=lambda value: (-counts[value], value))
+    chart_type = "line" if field == "month" else "bar"
+    return {
+        "chart_type": chart_type,
+        "labels": labels,
+        "values": [counts[label] for label in labels],
+        "path": None,
+        "description": f"{chart_type} chart of retrieved event counts by {x_label.lower()}.",
+        "title": title,
+    }
 
 
 def _contains_term(text: str, term: str) -> bool:
@@ -218,7 +266,35 @@ def _similarity_search(vectorstore, query: str, k: int, dataset: str | None = No
     )
 
 
-def get_semantic_documents_v2(query: str, k: int = 5):
+def _matches_focus_period(doc, country=None, period=None, granularity=None):
+    metadata = doc.metadata or {}
+    if country and str(metadata.get("country", "")).casefold() != country.casefold():
+        return False
+    if period is None or granularity is None:
+        return True
+
+    event_date = str(metadata.get("event_date") or "")[:10]
+    if not event_date:
+        return False
+    if granularity == "year":
+        return event_date[:4] == str(period)
+    if granularity == "month":
+        return event_date[:7] == str(period)
+    if granularity == "day":
+        return event_date == str(period)
+    if granularity == "week":
+        parsed_date = datetime.strptime(event_date, "%Y-%m-%d")
+        return parsed_date.strftime("%G-W%V") == str(period)
+    return True
+
+
+def get_semantic_documents_v2(
+    query: str,
+    k: int = 5,
+    country: str | None = None,
+    period: str | None = None,
+    granularity: str | None = None,
+):
     """
     Retrieve semantic documents with per-query dataset routing.
 
@@ -228,17 +304,31 @@ def get_semantic_documents_v2(query: str, k: int = 5):
     """
     vectorstore = get_vectorstore()
     dataset_route = classify_semantic_dataset(query)
+    retrieval_k = max(k * 5, k) if period and granularity else k
 
     if dataset_route == "acled":
-        return _similarity_search(vectorstore, query, k=k)
+        docs = _similarity_search(vectorstore, query, k=retrieval_k)
+        if period and granularity:
+            focused = [
+                doc for doc in docs
+                if _matches_focus_period(doc, country, period, granularity)
+            ]
+            return focused[:k]
+        return docs
 
     if dataset_route == "usa_iran_conflict":
-        return _similarity_search(
+        docs = _similarity_search(
             vectorstore,
             query,
-            k=k,
+            k=retrieval_k,
             dataset="usa_iran_conflict",
         )
+        if period and granularity:
+            docs = [
+                doc for doc in docs
+                if _matches_focus_period(doc, country, period, granularity)
+            ]
+        return docs[:k]
 
     usa_iran_k = max(1, k // 2)
     unfiltered_k = max(0, k - usa_iran_k)
@@ -251,21 +341,34 @@ def get_semantic_documents_v2(query: str, k: int = 5):
         ),
         *_similarity_search(vectorstore, query, k=unfiltered_k),
     ]
-    return _dedupe_documents(docs)[:k]
+    docs = _dedupe_documents(docs)
+    if period and granularity:
+        focused = [
+            doc for doc in docs
+            if _matches_focus_period(doc, country, period, granularity)
+        ]
+        return focused[:k]
+    return docs[:k]
 
 
-def build_rag_chain(k=5):
-    vectorstore = get_vectorstore()
-
-    retriever = vectorstore.as_retriever(
-        search_kwargs={"k": k}
-    )
+def build_rag_chain(k=5, docs=None):
+    if docs is None:
+        vectorstore = get_vectorstore()
+        retriever = vectorstore.as_retriever(search_kwargs={"k": k})
+        context_source = retriever | format_docs
+    else:
+        context_source = RunnableLambda(lambda _: format_docs(docs))
 
     prompt = ChatPromptTemplate.from_template(
         """You are an assistant answering questions about armed conflict events (ACLED data).
 
 Use ONLY the context below to answer the question.
 If the context doesn't contain enough information, say so explicitly instead of guessing.
+
+Write your answer as natural, flowing prose, as an expert would explain it out loud in conversation.
+Do NOT use markdown tables, bullet points, numbered lists, or bold section headers.
+Integrate all numbers and statistics naturally into complete sentences.
+Vary sentence structure and avoid repetitive templated phrasing across different answers.
 
 Context:
 {context}
@@ -283,7 +386,7 @@ Answer:"""
 
     chain = (
         {
-            "context": retriever | format_docs,
+            "context": context_source,
             "question": RunnablePassthrough()
         }
         | prompt
@@ -305,8 +408,20 @@ def get_semantic_context(query: str, k: int = 5) -> str:
     return format_docs(docs)
 
 
-def get_semantic_context_v2(query: str, k: int = 5) -> str:
-    docs = get_semantic_documents_v2(query, k=k)
+def get_semantic_context_v2(
+    query: str,
+    k: int = 5,
+    country: str | None = None,
+    period: str | None = None,
+    granularity: str | None = None,
+) -> str:
+    docs = get_semantic_documents_v2(
+        query,
+        k=k,
+        country=country,
+        period=period,
+        granularity=granularity,
+    )
     return format_docs(docs)
 
 
@@ -324,6 +439,14 @@ Use the semantic context for descriptions, interpretation, and concrete event ex
 Do not invent numbers that are not present in the structured context.
 Base qualitative descriptions only on the semantic context.
 If either source lacks the information needed for part of the question, say so explicitly.
+
+Write your answer as natural, flowing prose, as an expert would explain it out loud in conversation.
+When the structured context contains a numbered ranking, preserve its short natural-language introduction,
+numbering, ordering, em-dash dimension separators, and metric units. Do not flatten that ranking into a
+paragraph or replace it with key=value text. For non-ranking answers, do not use markdown tables, bullet
+points, numbered lists, or bold section headers. Integrate non-ranking numbers and statistics naturally
+into complete sentences.
+Vary sentence structure and avoid repetitive templated phrasing across different answers.
 
 Structured context:
 {structured_context}

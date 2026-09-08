@@ -52,6 +52,7 @@ ENV/
 .streamlit/secrets.toml
 *.env
 .env.local
+.env*.local
 
 # ChromaDB
 data/chroma_db/
@@ -61,3 +62,34 @@ test_e2e.py
 test_query.py
 test_usairan_queries.py
 .~lock.usa-iran.csv#
+.~lock.*#
+
+# Next.js / Node
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# TYPESCRIPT / NEXT.JS GENERATED FILES
+# ==========================================
+next-env.d.ts
+*.tsbuildinfo
+.turbo/
+
+# ==========================================
+# OS-GENERATED FILES
+# ==========================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==========================================
+# EDITOR / TEMP LOCK FILES
+# ==========================================
+*.tmp
+*.temp
+*~

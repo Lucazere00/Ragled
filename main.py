@@ -1,4 +1,11 @@
-from rag_prototype import build_hybrid_chain, build_rag_chain, get_semantic_context
+from rag_prototype import (
+    build_hybrid_chain,
+    build_rag_chain,
+    build_semantic_chart,
+    get_semantic_context,
+    get_semantic_context_v2,
+    get_semantic_documents_v2,
+)
 from router import route_query
 from structured import run_structured_query
 
@@ -32,7 +39,7 @@ def _ensure_context(value, placeholder):
     return value
 
 
-def run_pipeline(query: str) -> str:
+def run_pipeline(query: str) -> str | dict:
     """
     Orchestrate the RAG pipeline for a user query.
 
@@ -52,31 +59,49 @@ def run_pipeline(query: str) -> str:
 
     if router_output.query_type == "SEMANTIC":
         print("\n[SEMANTIC RAG]")
-        chain = build_rag_chain()
+        documents = get_semantic_documents_v2(query)
+        chain = build_rag_chain(docs=documents)
         response = chain.invoke(query)
         print("\n[RESPONSE]")
         print(response)
-        return response
+        chart = build_semantic_chart(documents, query)
+        chart_message = None if chart else "Dati insufficienti per generare un grafico."
+        return {
+            "type": "semantic",
+            "answer": str(response),
+            "chart": chart,
+            "chart_message": chart_message,
+        }
 
     if router_output.query_type == "STRUCTURED":
         print("\n[STRUCTURED]")
-        response = run_structured_query(router_output)
+        result = run_structured_query(router_output, query)
+        response = result["text"]
         print("\n[RESPONSE]")
         print(response)
-        return response
+        if result["chart"]:
+            print(f"[CHART] Saved to {result['chart']['path']}")
+        return {"type": "structured", "answer": response, "chart": result["chart"]}
 
     if router_output.query_type == "HYBRID":
         print("\n[HYBRID]")
         print("\n[STRUCTURED PART]")
+        structured_result = run_structured_query(router_output, query)
         structured_context = _ensure_context(
-            run_structured_query(router_output),
+            structured_result["text"],
             EMPTY_STRUCTURED_CONTEXT,
         )
         print(structured_context)
 
         print("\n[SEMANTIC PART]")
+        ranking = structured_result.get("ranking") or {}
         semantic_context = _ensure_context(
-            get_semantic_context(query),
+            get_semantic_context_v2(
+                query,
+                country=router_output.country,
+                period=ranking.get("winner"),
+                granularity=ranking.get("dimension"),
+            ),
             EMPTY_SEMANTIC_CONTEXT,
         )
         print(semantic_context[:300])
@@ -96,7 +121,13 @@ def run_pipeline(query: str) -> str:
 
         print("\n[RESPONSE]")
         print(response)
-        return response
+        if structured_result["chart"]:
+            print(f"[CHART] Saved to {structured_result['chart']['path']}")
+        return {
+            "type": "hybrid",
+            "answer": str(response),
+            "chart": structured_result["chart"],
+        }
 
     raise ValueError(f"Unsupported query type: {router_output.query_type}")
 
