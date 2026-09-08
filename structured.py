@@ -206,7 +206,9 @@ def _fallback_breakdown_commentary(rows, label_field, metric_field, dimension):
     )
 
 
-def _generate_breakdown_commentary(rows, label_field, metric_field, dimension, question):
+def _generate_breakdown_commentary(
+    rows, label_field, metric_field, dimension, question, llm=None
+):
     """Ask the LLM for a concise interpretation, with a local fallback."""
     if len(rows) < 2:
         return ""
@@ -218,15 +220,17 @@ def _generate_breakdown_commentary(rows, label_field, metric_field, dimension, q
         rows, label_field, metric_field, dimension
     )
     try:
-        from langchain_groq import ChatGroq
-
         prompt = (
             "You analyze aggregated ACLED data. Write 2 concise sentences in English. "
             "Describe the direction and percentage change between the first and last "
             "bucket when meaningful, and identify the maximum and minimum bucket. "
             "Do not invent causes or facts. Question: {question}. Aggregates: {data}"
         ).format(question=question or "", data=json.dumps(aggregate_data, default=str))
-        response = ChatGroq(model="openai/gpt-oss-20b", temperature=0).invoke(prompt)
+        if llm is None:
+            from langchain_groq import ChatGroq
+
+            llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0)
+        response = llm.invoke(prompt)
         text = response.content if hasattr(response, "content") else str(response)
         return text.strip() or fallback
     except Exception:
@@ -518,8 +522,8 @@ def _generate_multidimensional_chart(rows, dimensions, metric_field, question, t
     output_dir.mkdir(parents=True, exist_ok=True)
     query_hash = hashlib.sha256((question or title).encode("utf-8")).hexdigest()[:12]
     chart_path = output_dir / f"structured_{query_hash}.png"
-    labels = [" | ".join(str(row[dimension]) for dimension in dimensions) for row in rows[:20]]
-    values = [row[metric_field] if row[metric_field] is not None else 0 for row in rows[:20]]
+    labels = [" | ".join(str(row[dimension]) for dimension in dimensions) for row in rows[:10]]
+    values = [row[metric_field] if row[metric_field] is not None else 0 for row in rows[:10]]
     figure, axis = plt.subplots(figsize=(11, 5))
     axis.bar(labels, values, color="#54d6a8")
     axis.set_title(title)
@@ -757,7 +761,7 @@ def _chart_metadata(dimension, rows, question, chart_type_override=None, router_
     }
 
 
-def run_structured_query(router_output, question=None) -> dict:
+def run_structured_query(router_output, question=None, llm=None) -> dict:
     """
     Run aggregate ACLED analytics for a routed structured query.
 
@@ -905,9 +909,10 @@ def run_structured_query(router_output, question=None) -> dict:
         )
         text = " ".join(breakdown)
     commentary = _generate_breakdown_commentary(
-        rows, dimension, metric_field, dimension, question
+        rows, dimension, metric_field, dimension, question, llm=llm
     )
-    chart = _chart_metadata(dimension, rows, question, router_output=router_output)
+    chart_rows = rows[:10] if is_ranking and dimension not in ("day", "week", "month", "year") else rows
+    chart = _chart_metadata(dimension, chart_rows, question, router_output=router_output)
     winner = max(rows, key=lambda row: row[metric_field] or 0) if rows else None
     ranking = None
     if router_output.ranking_metric is not None or router_output.time_granularity is not None:

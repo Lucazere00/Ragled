@@ -1,34 +1,44 @@
 "use client";
 
 import { RotateCcw } from "lucide-react";
-import type { EventFilters, RagledEvent } from "@/lib/types";
+import type { EventFilterOptions, EventFilters, RagledEvent } from "@/lib/types";
 
 type Props = {
   events: RagledEvent[];
+  filterOptions: EventFilterOptions | null;
   filters: EventFilters;
   onChange: (filters: EventFilters) => void;
   resultCount: number;
 };
 
-export default function FilterSidebar({ events, filters, onChange, resultCount }: Props) {
-  const countries = Array.from(new Set(events.map((event) => event.country))).sort();
-  const categories = Array.from(new Set(events.map((event) => event.category))).sort();
-  const years = events.map((event) => Number(event.date.slice(0, 4)));
+export default function FilterSidebar({ events, filterOptions, filters, onChange, resultCount }: Props) {
+  const countries = filterOptions?.countries ?? [];
+  const regions = filterOptions?.regions ?? [];
+  const eventTypes = filterOptions?.eventTypes ?? [];
+  const disorderTypes = filterOptions?.disorderTypes ?? [];
+  const subEventTypes = filters.eventType
+    ? filterOptions?.subEventTypesByEventType[filters.eventType] ?? []
+    : filterOptions?.subEventTypes ?? [];
+  const years = filterOptions?.years ?? [];
   const minYear = years.length ? Math.min(...years) : new Date().getFullYear();
   const maxYear = years.length ? Math.max(...years) : minYear;
   const fromYear = filters.dateFrom ? Number(filters.dateFrom.slice(0, 4)) : minYear;
   const toYear = filters.dateTo ? Number(filters.dateTo.slice(0, 4)) : maxYear;
-
-  const updateCategory = (category: string) => {
-    const exists = filters.categories.includes(category);
-    onChange({
-      ...filters,
-      categories: exists ? filters.categories.filter((item) => item !== category) : [...filters.categories, category]
-    });
-  };
+  const optionsLoading = !filterOptions;
 
   const reset = () => {
-    onChange({ dateFrom: "", dateTo: "", country: "", categories: [] });
+    onChange({
+      dateFrom: "",
+      dateTo: "",
+      country: "",
+      region: "",
+      eventType: "",
+      disorderType: "",
+      subEventType: "",
+      fatalitiesMin: "",
+      fatalitiesMax: "",
+      categories: []
+    });
   };
 
   return (
@@ -53,60 +63,83 @@ export default function FilterSidebar({ events, filters, onChange, resultCount }
             <span className="text-slate-500">{fromYear} - {toYear}</span>
           </div>
           <label className="grid gap-1 text-xs text-slate-500">
-            Da {fromYear}
-            <input
-              type="range"
-              min={minYear}
-              max={maxYear}
-              value={fromYear}
-              onChange={(event) => onChange({ ...filters, dateFrom: `${event.target.value}-01-01` })}
-              className="accent-signal"
+            Da
+            <select
+              value={filters.dateFrom ? fromYear : ""}
+              disabled={optionsLoading}
+              onChange={(event) => onChange({ ...filters, dateFrom: event.target.value ? `${event.target.value}-01-01` : "" })}
+              className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-sm text-slate-100 outline-none ring-signal/30 focus:ring-4 disabled:cursor-wait disabled:opacity-60"
               aria-label="Anno iniziale"
-            />
+            >
+              <option value="">Primo anno</option>
+              {years.map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
           </label>
           <label className="grid gap-1 text-xs text-slate-500">
-            A {toYear}
-            <input
-              type="range"
-              min={minYear}
-              max={maxYear}
-              value={toYear}
-              onChange={(event) => onChange({ ...filters, dateTo: `${event.target.value}-12-31` })}
-              className="accent-signal"
+            A
+            <select
+              value={filters.dateTo ? toYear : ""}
+              disabled={optionsLoading}
+              onChange={(event) => onChange({ ...filters, dateTo: event.target.value ? `${event.target.value}-12-31` : "" })}
+              className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-sm text-slate-100 outline-none ring-signal/30 focus:ring-4 disabled:cursor-wait disabled:opacity-60"
               aria-label="Anno finale"
-            />
+            >
+              <option value="">Ultimo anno</option>
+              {years.map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
           </label>
         </div>
 
         <label className="grid gap-2 text-sm text-slate-300">
           Paese
           <select
-              value={filters.country}
-              onChange={(event) => onChange({ ...filters, country: event.target.value })}
-              className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-slate-100 outline-none ring-signal/30 focus:ring-4"
-            >
-              <option value="">Tutti i paesi</option>
-              {countries.map((country) => (
-                <option key={country} value={country} />
-              ))}
-            </select>
+            value={filters.country}
+            disabled={optionsLoading}
+            onChange={(event) => onChange({ ...filters, country: event.target.value })}
+            className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-slate-100 outline-none ring-signal/30 focus:ring-4"
+          >
+            <option value="">Seleziona un paese</option>
+            {countries.map((country) => <option key={country} value={country}>{country}</option>)}
+          </select>
         </label>
 
-        <div className="grid gap-2">
-          <span className="text-sm text-slate-300">Categorie</span>
-          <div className="grid gap-2">
-            {categories.map((category) => (
-              <label key={category} className="flex items-center gap-3 rounded-lg border border-line bg-coal px-3 py-2 text-sm text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={filters.categories.includes(category)}
-                  onChange={() => updateCategory(category)}
-                  className="h-4 w-4 accent-signal"
-                />
-                <span className={`h-2.5 w-2.5 rounded-full ${category === "Security" ? "bg-amber" : "bg-signal"}`} />
-                {category}
-              </label>
-            ))}
+        <label className="grid gap-2 text-sm text-slate-300">
+          Regione
+          <select value={filters.region} disabled={optionsLoading} onChange={(event) => onChange({ ...filters, region: event.target.value })} className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-slate-100 outline-none ring-signal/30 focus:ring-4 disabled:cursor-wait disabled:opacity-60">
+            <option value="">Seleziona una regione</option>
+            {regions.map((region) => <option key={region} value={region}>{region}</option>)}
+          </select>
+        </label>
+
+        <label className="grid gap-2 text-sm text-slate-300">
+          Event type
+          <select value={filters.eventType} disabled={optionsLoading} onChange={(event) => onChange({ ...filters, eventType: event.target.value, subEventType: "" })} className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-slate-100 outline-none ring-signal/30 focus:ring-4 disabled:cursor-wait disabled:opacity-60">
+            <option value="">Seleziona un event type</option>
+            {eventTypes.map((eventType) => <option key={eventType} value={eventType}>{eventType}</option>)}
+          </select>
+        </label>
+
+        <label className="grid gap-2 text-sm text-slate-300">
+          Disorder type
+          <select value={filters.disorderType} disabled={optionsLoading} onChange={(event) => onChange({ ...filters, disorderType: event.target.value })} className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-slate-100 outline-none ring-signal/30 focus:ring-4 disabled:cursor-wait disabled:opacity-60">
+            <option value="">Seleziona un disorder type</option>
+            {disorderTypes.map((disorderType) => <option key={disorderType} value={disorderType}>{disorderType}</option>)}
+          </select>
+        </label>
+
+        <label className="grid gap-2 text-sm text-slate-300">
+          Sub event type
+          <select value={filters.subEventType} disabled={optionsLoading} onChange={(event) => onChange({ ...filters, subEventType: event.target.value })} className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-slate-100 outline-none ring-signal/30 focus:ring-4 disabled:cursor-wait disabled:opacity-60">
+            <option value="">Seleziona un sub event type</option>
+            {subEventTypes.map((subEventType) => <option key={subEventType} value={subEventType}>{subEventType}</option>)}
+          </select>
+        </label>
+
+        <div className="grid gap-2 text-sm text-slate-300">
+          <span>Fatalities</span>
+          <div className="grid grid-cols-2 gap-2">
+            <input type="number" min="0" value={filters.fatalitiesMin} onChange={(event) => onChange({ ...filters, fatalitiesMin: event.target.value })} placeholder="Min" aria-label="Fatalities minime" className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-slate-100 outline-none ring-signal/30 focus:ring-4" />
+            <input type="number" min="0" value={filters.fatalitiesMax} onChange={(event) => onChange({ ...filters, fatalitiesMax: event.target.value })} placeholder="Max" aria-label="Fatalities massime" className="w-full rounded-lg border border-line bg-coal px-3 py-2 text-slate-100 outline-none ring-signal/30 focus:ring-4" />
           </div>
         </div>
       </div>

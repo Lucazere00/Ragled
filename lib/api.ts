@@ -1,5 +1,5 @@
 import { mockChatResponse, mockEvents } from "@/lib/mockData";
-import type { ChatResponse, EventFilters, RagledEvent } from "@/lib/types";
+import type { ChatResponse, EventFilterOptions, EventFilters, RagledEvent } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
@@ -55,12 +55,52 @@ export async function fetchEvents(filters?: Partial<EventFilters>): Promise<Ragl
   if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters?.dateTo) params.set("dateTo", filters.dateTo);
   if (filters?.country) params.set("country", filters.country);
+  if (filters?.region) params.set("region", filters.region);
+  if (filters?.eventType) params.set("eventType", filters.eventType);
+  if (filters?.disorderType) params.set("disorderType", filters.disorderType);
+  if (filters?.subEventType) params.set("subEventType", filters.subEventType);
+  if (filters?.fatalitiesMin) params.set("fatalitiesMin", filters.fatalitiesMin);
+  if (filters?.fatalitiesMax) params.set("fatalitiesMax", filters.fatalitiesMax);
   filters?.categories?.forEach((category) => params.append("category", category));
 
-  const res = await fetch(`${API_BASE_URL}/api/events?${params.toString()}`);
+  const res = await fetch(`${API_BASE_URL}/api/events?${params.toString()}`, {
+    signal: AbortSignal.timeout(120000)
+  });
   if (!res.ok) {
-    throw new Error("Impossibile caricare gli eventi geografici.");
+    let detail = "Impossibile caricare gli eventi geografici.";
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (body.detail) detail = body.detail;
+    } catch {
+      // Keep the map-specific fallback when the backend response is not JSON.
+    }
+    throw new Error(detail);
   }
 
   return res.json() as Promise<RagledEvent[]>;
+}
+
+export async function fetchEventFilterOptions(): Promise<EventFilterOptions> {
+  if (!API_BASE_URL) {
+    const years = Array.from(new Set(mockEvents.map((event) => Number(event.date.slice(0, 4))))).sort();
+    const eventTypes = Array.from(new Set(mockEvents.map((event) => event.category))).sort();
+    return {
+      years,
+      countries: Array.from(new Set(mockEvents.map((event) => event.country))).sort(),
+      regions: Array.from(new Set(mockEvents.map((event) => event.region))).sort(),
+      eventTypes,
+      disorderTypes: [],
+      subEventTypes: Array.from(new Set(mockEvents.map((event) => event.subEventType))).sort(),
+      subEventTypesByEventType: Object.fromEntries(eventTypes.map((type) => [
+        type,
+        Array.from(new Set(mockEvents.filter((event) => event.category === type).map((event) => event.subEventType))).sort()
+      ]))
+    };
+  }
+
+  const res = await fetch(`${API_BASE_URL}/api/events/options`, {
+    signal: AbortSignal.timeout(120000)
+  });
+  if (!res.ok) throw new Error("Impossibile caricare le opzioni dei filtri.");
+  return res.json() as Promise<EventFilterOptions>;
 }

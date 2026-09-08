@@ -5,8 +5,7 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/", label: "Home" },
-  { href: "/mappa", label: "Mappa" },
-  { href: "/info", label: "Info" }
+  { href: "/mappa", label: "Mappa" }
 ];
 
 export default function Navbar() {
@@ -34,9 +33,6 @@ export default function Navbar() {
             );
           })}
         </div>
-        <button type="button" className="rounded-lg border border-line px-4 py-2 text-sm text-slate-200 hover:bg-white/5">
-          Accedi
-        </button>
       </nav>
     </header>
   );

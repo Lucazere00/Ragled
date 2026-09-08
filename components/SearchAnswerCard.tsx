@@ -1,29 +1,17 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Copy, Search, Send } from "lucide-react";
+import { Database, Search, Send } from "lucide-react";
 import AnswerRenderer from "@/components/AnswerRenderer";
 import { sendChatMessage } from "@/lib/api";
 import type { ChatResponse } from "@/lib/types";
 
-const suggestions = ["Eventi in Francia", "Emissioni CO2", "Inflazione 2024"];
-const initialQuestion = "Qual è stato il PIL dell'Italia negli ultimi 5 anni?";
-
 export default function SearchAnswerCard() {
-  const [draft, setDraft] = useState(initialQuestion);
-  const [question, setQuestion] = useState(initialQuestion);
+  const [draft, setDraft] = useState("");
+  const [question, setQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [response, setResponse] = useState<ChatResponse>({
-    type: "hybrid",
-    answer: "Il PIL italiano ha mostrato una crescita costante dal 2021 al 2025, con un'accelerazione negli ultimi due anni trainata da export e investimenti.",
-    explanation: "I valori rappresentano la variazione percentuale annua del PIL italiano nel periodo 2021-2025.",
-    chart: {
-      chartType: "bar",
-      labels: ["2021", "2022", "2023", "2024", "2025"],
-      series: [{ name: "PIL", values: [100, 104, 108, 107, 112] }]
-    }
-  });
+  const [response, setResponse] = useState<ChatResponse | null>(null);
 
   const submit = async (event?: FormEvent, value = draft) => {
     event?.preventDefault();
@@ -39,10 +27,6 @@ export default function SearchAnswerCard() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const copyAnswer = async () => {
-    await navigator.clipboard?.writeText(`${question}\n\n${response.answer}`);
   };
 
   return (
@@ -63,34 +47,24 @@ export default function SearchAnswerCard() {
             <Send className="h-4 w-4" />
           </button>
         </form>
-        <div className="mt-4 flex flex-wrap justify-center gap-2">
-          {suggestions.map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              onClick={() => { setDraft(suggestion); void submit(undefined, suggestion); }}
-              className="rounded-lg border border-line px-3 py-1.5 text-sm text-slate-300 hover:border-signal/60 hover:text-slate-100"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
       </div>
 
-      <article className="mt-10 border-t border-line pt-6">
-        <p className="text-sm text-slate-400">Domanda</p>
-        <p className="mt-1 text-base text-slate-100">{question}</p>
-        <div className="mt-5 max-w-4xl">
-          <AnswerRenderer response={response} isLoading={isLoading} error={error} />
+      {question ? (
+        <article className="mt-10 border-t border-line pt-6">
+          <p className="text-sm text-slate-400">Domanda</p>
+          <p className="mt-1 text-base text-slate-100">{question}</p>
+          <div className="mt-5 max-w-4xl">
+            <AnswerRenderer response={response ?? undefined} isLoading={isLoading} error={error} />
+          </div>
+        </article>
+      ) : (
+        <div className="mx-auto mt-10 flex max-w-2xl items-start gap-4 border-t border-line pt-6 text-left">
+          <Database className="mt-1 h-5 w-5 shrink-0 text-signal" aria-hidden="true" />
+          <p className="text-sm leading-6 text-slate-400">
+            Ragled esplora il dataset ACLED sui conflitti nel mondo, rendendolo interrogabile in linguaggio naturale. Fai una domanda qui sopra oppure esplora tutti gli eventi sulla mappa interattiva.
+          </p>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <a href="/mappa" className="rounded-lg border border-line px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Vedi sulla mappa</a>
-          <button type="button" onClick={copyAnswer} className="inline-flex items-center gap-2 rounded-lg border border-line px-4 py-2 text-sm text-slate-200 hover:bg-white/5">
-            <Copy className="h-4 w-4" />
-            Copia
-          </button>
-        </div>
-      </article>
+      )}
     </section>
   );
 }
